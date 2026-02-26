@@ -366,7 +366,7 @@
         status.className = 'status success';
         showToast(name + ' 출석 완료!', 'success', '✓');
 
-      } else if (data.ok && data.mode === 'already_checked_in') {
+      } else if (data.mode === 'already_checked') {
         // 이미 출석됨
         const name = data.studentName || '학생';
         status.textContent = '⚠ ' + name + ' - 이미 출석됨';
@@ -374,9 +374,14 @@
         showToast(name + ' 이미 출석됨', 'warn', '⚠');
 
       } else if (data.mode === 'ip_blocked') {
-        status.textContent = '⚠ 허용되지 않은 위치입니다';
+        status.textContent = '⚠ 학원 와이파이에서만 사용 가능합니다';
         status.className = 'status error';
-        showToast('허용되지 않은 위치', 'error', '🚫');
+        showToast('학원 와이파이 연결 필요', 'error', '🚫');
+
+      } else if (data.mode === 'not_found') {
+        status.textContent = '⚠ 오늘 출석 대상이 아닙니다';
+        status.className = 'status error';
+        showToast('출석 대상 아님', 'error', '❌');
 
       } else {
         // 기타 실패
