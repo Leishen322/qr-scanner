@@ -17,6 +17,8 @@
     --accent-dim: rgba(34, 214, 138, 0.15);
     --text: #e8e8f0;
     --text-dim: #8888a0;
+    --warn: #ffb84d;
+    --danger: #ff5c5c;
     --radius: 14px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -120,11 +122,10 @@
     color: var(--text-dim);
   }
   .status.ready { color: var(--accent); }
-  .status.success {
-    color: var(--accent);
-    font-weight: 700;
-    font-size: 17px;
-  }
+  .status.success { color: var(--accent); font-weight: 700; font-size: 17px; }
+  .status.warn { color: var(--warn); font-weight: 600; }
+  .status.error { color: var(--danger); font-weight: 600; }
+  .status.loading { color: var(--text-dim); }
 
   /* Toast */
   .toast-container {
@@ -138,8 +139,6 @@
     pointer-events: none;
   }
   .toast {
-    background: var(--surface2);
-    border: 1px solid rgba(34, 214, 138, 0.3);
     border-radius: 12px;
     padding: 14px 18px;
     margin-bottom: 8px;
@@ -152,6 +151,18 @@
     pointer-events: auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   }
+  .toast.type-success {
+    background: var(--surface2);
+    border: 1px solid rgba(34, 214, 138, 0.3);
+  }
+  .toast.type-warn {
+    background: #2e2a1e;
+    border: 1px solid rgba(255, 184, 77, 0.3);
+  }
+  .toast.type-error {
+    background: #2e1e1e;
+    border: 1px solid rgba(255, 92, 92, 0.3);
+  }
   .toast.exit { animation: toastOut 0.3s ease-in forwards; }
   @keyframes toastIn {
     from { opacity: 0; transform: translateY(-30px) scale(0.95); }
@@ -162,7 +173,6 @@
   }
   .toast .icon {
     width: 32px; height: 32px;
-    background: var(--accent-dim);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -170,6 +180,9 @@
     flex-shrink: 0;
     font-size: 16px;
   }
+  .toast.type-success .icon { background: var(--accent-dim); }
+  .toast.type-warn .icon { background: rgba(255, 184, 77, 0.15); }
+  .toast.type-error .icon { background: rgba(255, 92, 92, 0.15); }
   .toast .content {
     font-size: 14px;
     font-weight: 600;
@@ -242,11 +255,11 @@
 <div id="permScreen" class="permission-screen">
   <div class="cam-icon">📷</div>
   <h2>더채움 입시학원 출석체크</h2>
-  <p>카메라를 사용하여 QR코드를 인식합니다.<br>QR코드를 카메라에 비춰주세요!</p>
+  <p>QR코드를 전면 카메라에 비춰주세요!</p>
   <button class="start-btn" onclick="startScanner()">스캔 시작</button>
 </div>
 
-<div id="mainUI" style="display:none; flex-direction:column; flex:1; width:100%;">
+<div id="mainUI" style="display:none; flex-direction:column; flex:1; width:100%; align-items:center;">
   <div class="header">
     <h1><span class="dot"></span>더채움 출석체크</h1>
     <div class="scan-count">출석 <span id="countNum">0</span>명</div>
@@ -275,27 +288,8 @@
   let scanCount = 0;
   let lastScanned = '';
   let lastScanTime = 0;
-  const DEBOUNCE_MS = 2000;
-
-  function extractDisplayName(raw) {
-    try {
-      if (raw.startsWith('http://') || raw.startsWith('https://')) {
-        const url = new URL(raw);
-        const params = url.searchParams;
-        const nameKeys = ['name', 'student', 'n', 'id', 'user', 'student_name'];
-        for (const key of nameKeys) {
-          if (params.has(key)) return decodeURIComponent(params.get(key));
-        }
-        const pathParts = url.pathname.split('/').filter(Boolean);
-        if (pathParts.length > 0) {
-          const last = decodeURIComponent(pathParts[pathParts.length - 1]);
-          if (!last.includes('.') || last.length > 20) return last;
-        }
-        return '출석 확인됨';
-      }
-    } catch(e) {}
-    return raw;
-  }
+  let isProcessing = false;
+  const DEBOUNCE_MS = 3000;
 
   function startScanner() {
     document.getElementById('permScreen').style.display = 'none';
@@ -304,7 +298,7 @@
 
     scanner = new Html5Qrcode("reader");
     const config = {
-      fps: 15,
+      fps: 10,
       qrbox: function(vw, vh) {
         const size = Math.min(vw, vh) * 0.65;
         return { width: size, height: size };
@@ -320,49 +314,105 @@
       () => {}
     ).catch(() => {
       document.getElementById('status').textContent = '카메라 접근이 거부되었습니다.';
-      document.getElementById('status').className = 'status';
+      document.getElementById('status').className = 'status error';
     });
   }
 
-  function onScanSuccess(decodedText) {
+  async function onScanSuccess(decodedText) {
     const now = Date.now();
+    // 같은 QR 연속 방지 + 처리 중 방지
+    if (isProcessing) return;
     if (decodedText === lastScanned && (now - lastScanTime) < DEBOUNCE_MS) return;
 
     lastScanned = decodedText;
     lastScanTime = now;
-    scanCount++;
+    isProcessing = true;
 
     if (navigator.vibrate) navigator.vibrate(100);
-    document.getElementById('countNum').textContent = scanCount;
-
-    const displayName = extractDisplayName(decodedText);
-    showToast(displayName, scanCount);
 
     const status = document.getElementById('status');
-    status.textContent = '✓ ' + displayName + ' 출석!';
-    status.className = 'status success';
+
+    // QR 내용이 우리 웹훅 URL인지 확인
+    if (!decodedText.includes('qr-checkin')) {
+      status.textContent = '⚠ 유효하지 않은 QR코드입니다';
+      status.className = 'status error';
+      showToast('유효하지 않은 QR코드', 'error', '❌');
+      setTimeout(() => {
+        status.textContent = 'QR코드를 카메라에 비춰주세요';
+        status.className = 'status ready';
+        isProcessing = false;
+      }, 2000);
+      return;
+    }
+
+    // 출석 처리 중 표시
+    status.textContent = '⏳ 출석 처리 중...';
+    status.className = 'status loading';
+
+    try {
+      const response = await fetch(decodedText, {
+        method: 'GET',
+        mode: 'cors'
+      });
+
+      const data = await response.json();
+
+      if (data.ok && data.mode === 'checked_in') {
+        // 출석 성공
+        scanCount++;
+        document.getElementById('countNum').textContent = scanCount;
+        const name = data.studentName || '학생';
+        status.textContent = '✓ ' + name + ' 출석 완료!';
+        status.className = 'status success';
+        showToast(name + ' 출석 완료!', 'success', '✓');
+
+      } else if (data.ok && data.mode === 'already_checked_in') {
+        // 이미 출석됨
+        const name = data.studentName || '학생';
+        status.textContent = '⚠ ' + name + ' - 이미 출석됨';
+        status.className = 'status warn';
+        showToast(name + ' 이미 출석됨', 'warn', '⚠');
+
+      } else if (data.mode === 'ip_blocked') {
+        status.textContent = '⚠ 허용되지 않은 위치입니다';
+        status.className = 'status error';
+        showToast('허용되지 않은 위치', 'error', '🚫');
+
+      } else {
+        // 기타 실패
+        const msg = data.message || data.reason || '출석 처리 실패';
+        status.textContent = '⚠ ' + msg;
+        status.className = 'status error';
+        showToast(msg, 'error', '❌');
+      }
+
+    } catch (err) {
+      status.textContent = '⚠ 서버 연결 실패';
+      status.className = 'status error';
+      showToast('서버 연결 실패', 'error', '❌');
+    }
+
+    // 2초 후 다시 스캔 대기
     setTimeout(() => {
       status.textContent = 'QR코드를 카메라에 비춰주세요';
       status.className = 'status ready';
-    }, 1500);
+      isProcessing = false;
+    }, 2000);
   }
 
-  function showToast(displayName, num) {
+  function showToast(text, type, icon) {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
-    toast.className = 'toast';
+    toast.className = 'toast type-' + type;
     toast.innerHTML = `
-      <div class="icon">✓</div>
-      <div class="content">
-        <div class="label">#${num} 출석 확인</div>
-        <div>${displayName}</div>
-      </div>
+      <div class="icon">${icon}</div>
+      <div class="content">${text}</div>
     `;
     container.prepend(toast);
     setTimeout(() => {
       toast.classList.add('exit');
       setTimeout(() => toast.remove(), 300);
-    }, 2500);
+    }, 3000);
     while (container.children.length > 3) container.lastChild.remove();
   }
 </script>
