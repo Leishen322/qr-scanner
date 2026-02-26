@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>더채움 입시학원 출석체크</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #15151e;
+    --surface2: #1e1e2e;
+    --accent: #22d68a;
+    --accent-dim: rgba(34, 214, 138, 0.15);
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+  .header {
+    padding: 16px 20px 12px;
+    width: 100%;
+    max-width: 432px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header h1 .dot {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 214, 138, 0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 8px rgba(34, 214, 138, 0); }
+  }
+  .scan-count {
+    font-size: 13px;
+    color: var(--text-dim);
+    background: var(--surface);
+    padding: 6px 12px;
+    border-radius: 20px;
+  }
+  .scan-count span { color: var(--accent); font-weight: 700; }
+  .scanner-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    padding: 0 16px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .scanner-container {
+    position: relative;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 1;
+  }
+  #reader { width: 100%; height: 100%; }
+  #reader video { object-fit: cover !important; border-radius: var(--radius); }
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .scan-corner {
+    position: absolute;
+    width: 28px; height: 28px;
+    border-color: var(--accent);
+    border-style: solid;
+    border-width: 0;
+  }
+  .scan-corner.tl { top: 20%; left: 15%; border-top-width: 3px; border-left-width: 3px; border-radius: 4px 0 0 0; }
+  .scan-corner.tr { top: 20%; right: 15%; border-top-width: 3px; border-right-width: 3px; border-radius: 0 4px 0 0; }
+  .scan-corner.bl { bottom: 20%; left: 15%; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 4px; }
+  .scan-corner.br { bottom: 20%; right: 15%; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 4px 0; }
+  .scan-line {
+    position: absolute;
+    left: 15%; right: 15%;
+    top: 20%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanMove 2.5s ease-in-out infinite;
+    opacity: 0.8;
+  }
+  @keyframes scanMove {
+    0%, 100% { top: 20%; }
+    50% { top: 78%; }
+  }
+  .status {
+    text-align: center;
+    padding: 20px;
+    font-size: 15px;
+    color: var(--text-dim);
+  }
+  .status.ready { color: var(--accent); }
+  .status.success {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 17px;
+  }
+
+  /* Toast */
+  .toast-container {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 20px;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface2);
+    border: 1px solid rgba(34, 214, 138, 0.3);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 8px;
+    max-width: 90%;
+    width: fit-content;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .toast.exit { animation: toastOut 0.3s ease-in forwards; }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(-30px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes toastOut {
+    to { opacity: 0; transform: translateY(-20px) scale(0.95); }
+  }
+  .toast .icon {
+    width: 32px; height: 32px;
+    background: var(--accent-dim);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+  .toast .content {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .toast .label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+    font-weight: 400;
+  }
+
+  /* Permission */
+  .permission-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    text-align: center;
+  }
+  .permission-screen .cam-icon {
+    width: 72px; height: 72px;
+    background: var(--accent-dim);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    margin-bottom: 20px;
+  }
+  .permission-screen h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .permission-screen p {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+  .start-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 14px 36px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .start-btn:active { transform: scale(0.96); }
+
+  /* Hide library UI */
+  #reader__dashboard, #reader__status_span,
+  #reader__header_message, #reader__filescan_input,
+  #reader img[alt="Info icon"] { display: none !important; }
+  #reader { border: none !important; }
+  #reader__scan_region { min-height: unset !important; }
+  #reader__scan_region img { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="permScreen" class="permission-screen">
+  <div class="cam-icon">📷</div>
+  <h2>더채움 입시학원 출석체크</h2>
+  <p>카메라를 사용하여 QR코드를 인식합니다.<br>QR코드를 카메라에 비춰주세요!</p>
+  <button class="start-btn" onclick="startScanner()">스캔 시작</button>
+</div>
+
+<div id="mainUI" style="display:none; flex-direction:column; flex:1; width:100%;">
+  <div class="header">
+    <h1><span class="dot"></span>더채움 출석체크</h1>
+    <div class="scan-count">출석 <span id="countNum">0</span>명</div>
+  </div>
+
+  <div class="scanner-wrap">
+    <div class="scanner-container">
+      <div id="reader"></div>
+      <div class="scan-overlay">
+        <div class="scan-corner tl"></div>
+        <div class="scan-corner tr"></div>
+        <div class="scan-corner bl"></div>
+        <div class="scan-corner br"></div>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="status" class="status ready">QR코드를 카메라에 비춰주세요</div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  let scanner = null;
+  let scanCount = 0;
+  let lastScanned = '';
+  let lastScanTime = 0;
+  const DEBOUNCE_MS = 2000;
+
+  function extractDisplayName(raw) {
+    try {
+      if (raw.startsWith('http://') || raw.startsWith('https://')) {
+        const url = new URL(raw);
+        const params = url.searchParams;
+        const nameKeys = ['name', 'student', 'n', 'id', 'user', 'student_name'];
+        for (const key of nameKeys) {
+          if (params.has(key)) return decodeURIComponent(params.get(key));
+        }
+        const pathParts = url.pathname.split('/').filter(Boolean);
+        if (pathParts.length > 0) {
+          const last = decodeURIComponent(pathParts[pathParts.length - 1]);
+          if (!last.includes('.') || last.length > 20) return last;
+        }
+        return '출석 확인됨';
+      }
+    } catch(e) {}
+    return raw;
+  }
+
+  function startScanner() {
+    document.getElementById('permScreen').style.display = 'none';
+    const mainUI = document.getElementById('mainUI');
+    mainUI.style.display = 'flex';
+
+    scanner = new Html5Qrcode("reader");
+    const config = {
+      fps: 15,
+      qrbox: function(vw, vh) {
+        const size = Math.min(vw, vh) * 0.65;
+        return { width: size, height: size };
+      },
+      aspectRatio: 1.0,
+      disableFlip: false
+    };
+
+    scanner.start(
+      { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      () => {}
+    ).catch(() => {
+      document.getElementById('status').textContent = '카메라 접근이 거부되었습니다.';
+      document.getElementById('status').className = 'status';
+    });
+  }
+
+  function onScanSuccess(decodedText) {
+    const now = Date.now();
+    if (decodedText === lastScanned && (now - lastScanTime) < DEBOUNCE_MS) return;
+
+    lastScanned = decodedText;
+    lastScanTime = now;
+    scanCount++;
+
+    if (navigator.vibrate) navigator.vibrate(100);
+    document.getElementById('countNum').textContent = scanCount;
+
+    const displayName = extractDisplayName(decodedText);
+    showToast(displayName, scanCount);
+
+    const status = document.getElementById('status');
+    status.textContent = '✓ ' + displayName + ' 출석!';
+    status.className = 'status success';
+    setTimeout(() => {
+      status.textContent = 'QR코드를 카메라에 비춰주세요';
+      status.className = 'status ready';
+    }, 1500);
+  }
+
+  function showToast(displayName, num) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `
+      <div class="icon">✓</div>
+      <div class="content">
+        <div class="label">#${num} 출석 확인</div>
+        <div>${displayName}</div>
+      </div>
+    `;
+    container.prepend(toast);
+    setTimeout(() => {
+      toast.classList.add('exit');
+      setTimeout(() => toast.remove(), 300);
+    }, 2500);
+    while (container.children.length > 3) container.lastChild.remove();
+  }
+</script>
+</body>
+</html>
