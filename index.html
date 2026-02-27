@@ -285,6 +285,10 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+
   let scanner = null;
   let scanCount = 0;
   let lastScanned = '';
