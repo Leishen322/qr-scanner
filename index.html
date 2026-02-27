@@ -117,6 +117,34 @@
     0%, 100% { top: 20%; }
     50% { top: 78%; }
   }
+
+  /* 카메라 플래시 효과 */
+  .flash-overlay {
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+    border-radius: var(--radius);
+  }
+  .flash-overlay.flash {
+    animation: flashAnim 0.4s ease-out;
+  }
+  @keyframes flashAnim {
+    0% { opacity: 0.9; }
+    100% { opacity: 0; }
+  }
+
+  /* 스캔 성공 테두리 효과 */
+  .scanner-container.scanned {
+    animation: borderGlow 0.6s ease-out;
+  }
+  @keyframes borderGlow {
+    0% { box-shadow: inset 0 0 0 4px var(--accent); }
+    100% { box-shadow: inset 0 0 0 0px transparent; }
+  }
+
   .status {
     text-align: center;
     padding: 20px;
@@ -268,8 +296,9 @@
   </div>
 
   <div class="scanner-wrap">
-    <div class="scanner-container">
+    <div class="scanner-container" id="scannerBox">
       <div id="reader"></div>
+      <div class="flash-overlay" id="flashOverlay"></div>
       <div class="scan-overlay">
         <div class="scan-corner tl"></div>
         <div class="scan-corner tr"></div>
@@ -290,11 +319,46 @@
     navigator.serviceWorker.register('sw.js');
   }
 
+  // 셔터 사운드 (짧은 합성음)
+  let audioCtx = null;
+  function playShutter() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(1800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime + 0.12);
+    } catch(e) {}
+  }
+
+  function triggerCaptureEffect() {
+    // 플래시
+    const flash = document.getElementById('flashOverlay');
+    flash.classList.remove('flash');
+    void flash.offsetWidth;
+    flash.classList.add('flash');
+
+    // 테두리 글로우
+    const box = document.getElementById('scannerBox');
+    box.classList.remove('scanned');
+    void box.offsetWidth;
+    box.classList.add('scanned');
+
+    // 진동 + 셔터음
+    if (navigator.vibrate) navigator.vibrate(80);
+    playShutter();
+  }
+
   let scanner = null;
   let scanCount = 0;
   let lastScanned = '';
   let lastScanTime = 0;
-  let isProcessing = false;
   const DEBOUNCE_MS = 3000;
 
   function startScanner() {
@@ -326,82 +390,63 @@
 
   async function onScanSuccess(decodedText) {
     const now = Date.now();
-    if (isProcessing) return;
     if (decodedText === lastScanned && (now - lastScanTime) < DEBOUNCE_MS) return;
 
     lastScanned = decodedText;
     lastScanTime = now;
-    isProcessing = true;
-
-    if (navigator.vibrate) navigator.vibrate(100);
 
     const status = document.getElementById('status');
 
     if (!decodedText.includes('qr-checkin')) {
+      triggerCaptureEffect();
       status.textContent = '⚠ 유효하지 않은 QR코드입니다';
       status.className = 'status error';
       showToast('유효하지 않은 QR코드', 'error', '❌');
       setTimeout(() => {
         status.textContent = 'QR코드를 카메라에 비춰주세요';
         status.className = 'status ready';
-        isProcessing = false;
       }, 2000);
       return;
     }
 
-    status.textContent = '⏳ 출석 처리 중...';
-    status.className = 'status loading';
+    // 찰칵! 인식 즉시 캡처 효과
+    triggerCaptureEffect();
 
-    try {
-      const response = await fetch(decodedText, {
-        method: 'GET',
-        mode: 'cors'
-      });
-
-      const data = await response.json();
-
-      if (data.ok && data.mode === 'checked_in') {
-        scanCount++;
-        document.getElementById('countNum').textContent = scanCount;
-        const name = data.studentName || '학생';
-        status.textContent = '✓ ' + name + ' 출석 완료!';
-        status.className = 'status success';
-        showToast(name + ' 출석 완료!', 'success', '✓');
-
-      } else if (data.mode === 'already_checked') {
-        const name = data.studentName || '학생';
-        status.textContent = '⚠ ' + name + ' - 이미 출석됨';
-        status.className = 'status warn';
-        showToast(name + ' 이미 출석됨', 'warn', '⚠');
-
-      } else if (data.mode === 'ip_blocked') {
-        status.textContent = '⚠ 학원 와이파이에서만 사용 가능합니다';
-        status.className = 'status error';
-        showToast('학원 와이파이 연결 필요', 'error', '🚫');
-
-      } else if (data.mode === 'not_found') {
-        status.textContent = '⚠ 오늘 출석 대상이 아닙니다';
-        status.className = 'status error';
-        showToast('출석 대상 아님', 'error', '❌');
-
-      } else {
-        const msg = data.message || data.reason || '출석 처리 실패';
-        status.textContent = '⚠ ' + msg;
-        status.className = 'status error';
-        showToast(msg, 'error', '❌');
-      }
-
-    } catch (err) {
-      status.textContent = '⚠ 서버 연결 실패';
-      status.className = 'status error';
-      showToast('서버 연결 실패', 'error', '❌');
-    }
+    status.textContent = '✓ QR 인식됨!';
+    status.className = 'status success';
 
     setTimeout(() => {
       status.textContent = 'QR코드를 카메라에 비춰주세요';
       status.className = 'status ready';
-      isProcessing = false;
-    }, 2000);
+    }, 1500);
+
+    // 웹훅은 백그라운드 처리 — 학생은 바로 빠져도 됨
+    fetch(decodedText, { method: 'GET', mode: 'cors' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.mode === 'checked_in') {
+          scanCount++;
+          document.getElementById('countNum').textContent = scanCount;
+          const name = data.studentName || '학생';
+          showToast(name + ' 출석 완료!', 'success', '✓');
+
+        } else if (data.mode === 'already_checked') {
+          const name = data.studentName || '학생';
+          showToast(name + ' 이미 출석됨', 'warn', '⚠');
+
+        } else if (data.mode === 'ip_blocked') {
+          showToast('학원 와이파이 연결 필요', 'error', '🚫');
+
+        } else if (data.mode === 'not_found') {
+          showToast('출석 대상 아님', 'error', '❌');
+
+        } else {
+          showToast(data.message || '출석 처리 실패', 'error', '❌');
+        }
+      })
+      .catch(() => {
+        showToast('서버 연결 실패', 'error', '❌');
+      });
   }
 
   function showToast(text, type, icon) {
