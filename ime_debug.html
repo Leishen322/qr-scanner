@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>IME 디버그</title>
+<style>
+body { font-family: -apple-system, sans-serif; padding: 16px; max-width: 500px; margin: 0 auto; background: #f5f5f5; }
+h2 { margin-bottom: 12px; }
+input { width: 100%; padding: 14px; font-size: 18px; border: 2px solid #4F46E5; border-radius: 10px; box-sizing: border-box; margin-bottom: 8px; font-family: inherit; }
+.info { font-size: 13px; color: #666; margin-bottom: 12px; }
+.btns { display: flex; gap: 8px; margin-bottom: 12px; }
+button { padding: 10px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.clear { background: #EF4444; color: white; }
+.copy { background: #4F46E5; color: white; }
+#log { background: #1a1a2e; color: #eee; font-family: 'SF Mono', 'Menlo', monospace; font-size: 11px; padding: 12px; border-radius: 10px; height: 55vh; overflow-y: auto; white-space: pre; line-height: 1.6; }
+.ev-cs { color: #ff6b6b; }
+.ev-cu { color: #ffd93d; }
+.ev-ce { color: #6bcb77; }
+.ev-inp { color: #4d96ff; }
+.ev-kd { color: #c084fc; }
+</style>
+</head>
+<body>
+<h2>🔍 IME 이벤트 디버그</h2>
+<div class="info">"형" 한 글자만 쳐보세요. 이벤트 순서가 기록됩니다.</div>
+<input id="inp" type="text" placeholder="여기에 한글 입력" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+<div class="btns">
+<button class="clear" onclick="document.getElementById('log').textContent=''; seq=0; document.getElementById('inp').value='';">초기화</button>
+<button class="copy" onclick="navigator.clipboard.writeText(document.getElementById('log').textContent).then(()=>alert('복사됨'))">로그 복사</button>
+</div>
+<div id="log"></div>
+<script>
+const inp = document.getElementById('inp');
+const log = document.getElementById('log');
+let seq = 0;
+
+function add(cls, type, detail) {
+    seq++;
+    const line = document.createElement('div');
+    line.className = cls;
+    line.textContent = String(seq).padStart(3,' ') + ' ' + type.padEnd(20) + detail;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+}
+
+inp.addEventListener('compositionstart', e => {
+    add('ev-cs', 'compositionstart', 'data="' + (e.data||'') + '"');
+});
+inp.addEventListener('compositionupdate', e => {
+    add('ev-cu', 'compositionupdate', 'data="' + (e.data||'') + '" value="' + inp.value + '"');
+});
+inp.addEventListener('compositionend', e => {
+    add('ev-ce', 'compositionend', 'data="' + (e.data||'') + '" value="' + inp.value + '"');
+});
+inp.addEventListener('input', e => {
+    add('ev-inp', 'input', 'isComposing=' + e.isComposing + ' inputType=' + (e.inputType||'?') + ' data="' + (e.data||'') + '" value="' + inp.value + '"');
+});
+inp.addEventListener('keydown', e => {
+    if(e.key !== 'Process') {
+        add('ev-kd', 'keydown', 'key="' + e.key + '" isComposing=' + e.isComposing);
+    }
+});
+</script>
+</body>
+</html>
