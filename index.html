@@ -638,7 +638,7 @@ function showToast(type, message) {
 }
 
 function requestCamera() {
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
     .then(stream => {
       stream.getTracks().forEach(t => t.stop());
       document.getElementById('permScreen').style.display = 'none';
@@ -659,7 +659,7 @@ function startScanner() {
 
   scanner = new Html5Qrcode('reader');
   scanner.start(
-    { facingMode: 'environment' },
+    { facingMode: 'user' },
     { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
     onScanSuccess,
     () => {}
