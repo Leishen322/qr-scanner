@@ -70,7 +70,6 @@
   }
   .scan-count span { color: var(--accent); font-weight: 700; }
 
-  /* 설정 버튼 */
   .settings-btn {
     width: 36px; height: 36px;
     background: var(--surface);
@@ -86,7 +85,6 @@
   }
   .settings-btn:active { background: var(--surface2); }
 
-  /* 설정 패널 */
   .settings-panel {
     display: none;
     position: fixed;
@@ -188,6 +186,7 @@
   #reader {
     width: 100%;
     height: 100%;
+    transform: scaleX(-1);
   }
   #reader video {
     width: 100%;
@@ -376,7 +375,6 @@
     <div id="status" class="status ready">QR코드를 카메라에 비춰주세요</div>
   </div>
 
-  <!-- 설정 패널 -->
   <div class="settings-panel" id="settingsPanel" onclick="if(event.target===this)closeSettings()">
     <div class="settings-sheet">
       <h3>
@@ -422,6 +420,7 @@ function scheduleMidnightReset() {
     scanCount = 0;
     document.getElementById('countNum').textContent = '0';
     saveCount(0);
+    scannedSet.clear();
     scheduleMidnightReset();
   }, ms);
 }
@@ -546,7 +545,6 @@ const SOUNDS = [
   }
 ];
 
-// 저장된 설정 불러오기
 let currentSound = localStorage.getItem('qr_sound') || 'ding';
 
 function openSettings() {
@@ -563,7 +561,6 @@ function openSettings() {
       localStorage.setItem('qr_sound', s.id);
       document.querySelectorAll('.sound-option').forEach(el => el.classList.remove('active'));
       div.classList.add('active');
-      // 체크마크 업데이트
       document.querySelectorAll('.sound-option .check').forEach(el => el.textContent = '');
       div.querySelector('.check').textContent = '✓';
     };
@@ -652,7 +649,6 @@ function requestCamera() {
 }
 
 function startScanner() {
-  // 페이지 로드 시 카운트 복원
   scanCount = loadCount();
   document.getElementById('countNum').textContent = scanCount;
   scheduleMidnightReset();
@@ -690,36 +686,36 @@ function onScanSuccess(decodedText) {
   status.className = 'status success';
   isProcessing = true;
 
-  setTimeout(() => {
-    isProcessing = false;
-    status.textContent = 'QR코드를 카메라에 비춰주세요';
-    status.className = 'status ready';
-  }, 1500);
-
   fetch(decodedText, { method: 'GET', mode: 'cors' })
     .then(r => r.json())
     .then(data => {
-      scannedSet.add(decodedText);
-      scanCount++;
-      document.getElementById('countNum').textContent = scanCount;
-      saveCount(scanCount);
+      if (data.ok) {
+        scannedSet.add(decodedText);
 
-      if (data.ok || data.success) {
-        const name = data.name || data.studentName || '학생';
-        showToast('ok', `<strong>${name}</strong> 출석 완료!`);
-      } else if (data.duplicate) {
-        const name = data.name || data.studentName || '학생';
-        showToast('dup', `<strong>${name}</strong> 이미 출석 처리됨`);
+        if (data.mode === 'already_checked') {
+          const name = data.studentName || '학생';
+          showToast('dup', `<strong>${name}</strong> 이미 출석 처리됨`);
+        } else {
+          scanCount++;
+          document.getElementById('countNum').textContent = scanCount;
+          saveCount(scanCount);
+          const name = data.studentName || '학생';
+          showToast('ok', `<strong>${name}</strong> 출석 완료!`);
+        }
       } else {
         showToast('err', data.message || '처리 중 오류가 발생했습니다.');
       }
     })
     .catch(err => {
       showToast('err', '서버 연결에 실패했습니다.');
+    })
+    .finally(() => {
+      isProcessing = false;
+      status.textContent = 'QR코드를 카메라에 비춰주세요';
+      status.className = 'status ready';
     });
 }
 
-// 초기 진입: 카메라 권한 이미 있으면 바로 시작
 navigator.mediaDevices.getUserMedia({ video: true })
   .then(stream => {
     stream.getTracks().forEach(t => t.stop());
@@ -727,9 +723,7 @@ navigator.mediaDevices.getUserMedia({ video: true })
     document.getElementById('mainUI').style.display = 'flex';
     startScanner();
   })
-  .catch(() => {
-    // 권한 없음 → 권한 요청 화면 표시
-  });
+  .catch(() => {});
 </script>
 </body>
 </html>
