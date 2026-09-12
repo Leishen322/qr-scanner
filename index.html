@@ -686,7 +686,13 @@ function onScanSuccess(decodedText) {
   status.className = 'status success';
   isProcessing = true;
 
-  fetch(decodedText, { method: 'GET', mode: 'cors' })
+  // 주소 이전(D116): 옛 QR 속 주소도 새 주소로 부른다 — 학생 QR 을 다시 안 나눠 줘도 된다.
+  //   새 주소가 아직 없으면(전환 전) 연결 실패 → 원래 주소로 한 번 더. 서버가 답했으면 다시 안 부른다.
+  var qrUrl = String(decodedText);
+  var newUrl = qrUrl.replace('//n8n.prayforruin.synology.me/', '//n8n.chlfkrtn.synology.me/');
+  (newUrl === qrUrl ? fetch(qrUrl, { method: 'GET', mode: 'cors' })
+    : fetch(newUrl, { method: 'GET', mode: 'cors' })
+        .catch(function () { return fetch(qrUrl, { method: 'GET', mode: 'cors' }); }))
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
